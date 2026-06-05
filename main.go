@@ -22,13 +22,26 @@ type Token struct {
 	next *Token
 	val  int
 	str  string
+	pos  int // userInput中の位置
 }
+
+// 入力プログラム
+var userInput string
 
 // 現在着目しているトークン
 var token *Token
 
 // エラーを報告して終了
 func errorf(format string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	os.Exit(1)
+}
+
+// エラー箇所を報告して終了
+func errorAt(loc int, format string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, "%s\n", userInput)
+	fmt.Fprintf(os.Stderr, "%*s", loc, "")
+	fmt.Fprintf(os.Stderr, "^ ")
 	fmt.Fprintf(os.Stderr, format+"\n", args...)
 	os.Exit(1)
 }
@@ -47,7 +60,7 @@ func consume(op byte) bool {
 // それ以外の場合にはエラーを報告する。
 func expect(op byte) {
 	if token.kind != TK_RESERVED || token.str[0] != op {
-		errorf("'%c'ではありません", op)
+		errorAt(token.pos, "'%c'ではありません", op)
 	}
 	token = token.next
 }
@@ -56,7 +69,7 @@ func expect(op byte) {
 // それ以外の場合にはエラーを報告する。
 func expectNumber() int {
 	if token.kind != TK_NUM {
-		errorf("数ではありません")
+		errorAt(token.pos, "数ではありません")
 	}
 	val := token.val
 	token = token.next
@@ -74,38 +87,40 @@ func newToken(kind TokenKind, cur *Token, str string) *Token {
 	return tok
 }
 
-// 入力文字列pをトークナイズしてそれを返す
-func tokenize(p string) *Token {
+// userInputをトークナイズしてそれを返す
+func tokenize() *Token {
 	head := &Token{}
 	cur := head
 	i := 0
 
-	for i < len(p) {
+	for i < len(userInput) {
 		// 空白文字をスキップ
-		if unicode.IsSpace(rune(p[i])) {
+		if unicode.IsSpace(rune(userInput[i])) {
 			i++
 			continue
 		}
 
-		if p[i] == '+' || p[i] == '-' {
-			cur = newToken(TK_RESERVED, cur, p[i:i+1])
+		if userInput[i] == '+' || userInput[i] == '-' {
+			cur = newToken(TK_RESERVED, cur, userInput[i:i+1])
+			cur.pos = i
 			i++
 			continue
 		}
 
-		if unicode.IsDigit(rune(p[i])) {
+		if unicode.IsDigit(rune(userInput[i])) {
 			j := i
-			for j < len(p) && unicode.IsDigit(rune(p[j])) {
+			for j < len(userInput) && unicode.IsDigit(rune(userInput[j])) {
 				j++
 			}
-			val, _ := strconv.Atoi(p[i:j])
-			cur = newToken(TK_NUM, cur, p[i:j])
+			val, _ := strconv.Atoi(userInput[i:j])
+			cur = newToken(TK_NUM, cur, userInput[i:j])
 			cur.val = val
+			cur.pos = i
 			i = j
 			continue
 		}
 
-		errorf("トークナイズできません")
+		errorAt(i, "トークナイズできません")
 	}
 
 	newToken(TK_EOF, cur, "")
@@ -117,8 +132,8 @@ func main() {
 		errorf("引数の個数が正しくありません")
 	}
 
-	// トークナイズする
-	token = tokenize(os.Args[1])
+	userInput = os.Args[1]
+	token = tokenize()
 
 	// アセンブリの前半部分を出力
 	fmt.Println(".intel_syntax noprefix")
